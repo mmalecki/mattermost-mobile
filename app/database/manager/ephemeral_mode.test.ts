@@ -34,6 +34,7 @@ jest.mock('@helpers/database/upgrade', () => ({
 
 jest.mock('@init/credentials', () => ({
     removePreauthSecret: jest.fn(),
+    removeCustomHeaders: jest.fn(),
 }));
 
 import DatabaseManager from '@database/manager';

@@ -27,7 +27,7 @@ import {attemptServerDatabaseRecovery} from '@database/recovery';
 import {schema as appSchema} from '@database/schema/app';
 import {serverSchema} from '@database/schema/server';
 import {beforeUpgrade} from '@helpers/database/upgrade';
-import {removePreauthSecret} from '@init/credentials';
+import {removeCustomHeaders, removePreauthSecret} from '@init/credentials';
 import {PlaybookRunModel, PlaybookChecklistModel, PlaybookChecklistItemModel, PlaybookRunPropertyFieldModel, PlaybookRunPropertyValueModel} from '@playbooks/database/models';
 import {getActiveServer, getServer, getServerByIdentifier} from '@queries/app/servers';
 import {deleteFile} from '@utils/file';
@@ -477,8 +477,9 @@ class DatabaseManagerSingleton {
                 delete this.serverDatabases[serverUrl];
                 this.deleteServerDatabaseFiles(serverUrl);
 
-                // Remove pre-auth secret when server is destroyed
+                // Remove pre-auth secret and custom headers when server is destroyed
                 await removePreauthSecret(serverUrl);
+                await removeCustomHeaders(serverUrl);
             }
         }
     };

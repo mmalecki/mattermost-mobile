@@ -21,6 +21,7 @@ import * as ClientConstants from '@client/rest/constants';
 import ClientError from '@client/rest/error';
 import {CERTIFICATE_ERRORS} from '@constants/network';
 import ManagedApp from '@init/managed_app';
+import {getCustomHeadersRecord} from '@utils/custom_headers';
 import {toMilliseconds} from '@utils/datetime';
 import {getIntlShape} from '@utils/general';
 import {logDebug, logError} from '@utils/log';
@@ -78,9 +79,9 @@ class NetworkManagerSingleton {
 
     public init = async (serverCredentials: ServerCredential[]) => {
         logDebug('NetworkManager: Initializing');
-        for await (const {serverUrl, token, preauthSecret} of serverCredentials) {
+        for await (const {serverUrl, token, preauthSecret, customHeaders} of serverCredentials) {
             try {
-                await this.createClient(serverUrl, token, preauthSecret);
+                await this.createClient(serverUrl, token, preauthSecret, customHeaders);
             } catch (error) {
                 logError('NetworkManager init error', error);
             }
@@ -101,15 +102,15 @@ class NetworkManagerSingleton {
         return client;
     };
 
-    public createClient = async (serverUrl: string, bearerToken?: string, preauthSecret?: string) => {
-        const config = await this.buildConfig(preauthSecret);
+    public createClient = async (serverUrl: string, bearerToken?: string, preauthSecret?: string, customHeaders?: CustomHeader[]) => {
+        const config = await this.buildConfig(preauthSecret, customHeaders);
 
         try {
             const {client} = await getOrCreateAPIClient(serverUrl, config, this.clientErrorEventHandler);
             const csrfToken = await getCSRFFromCookie(serverUrl);
 
             // Pass preauthSecret explicitly to constructor to match ClientBase behavior
-            this.clients[serverUrl] = new Client(client, serverUrl, bearerToken, csrfToken, preauthSecret);
+            this.clients[serverUrl] = new Client(client, serverUrl, bearerToken, csrfToken, preauthSecret, customHeaders);
         } catch (error) {
             throw new ClientError(serverUrl, {
                 message: 'Can’t find this server. Check spelling and URL format.',
@@ -125,12 +126,13 @@ class NetworkManagerSingleton {
         return this.clients[serverUrl];
     };
 
-    private buildConfig = async (preauthSecret?: string) => {
+    private buildConfig = async (preauthSecret?: string, customHeaders?: CustomHeader[]) => {
         const userAgent = `Mattermost Mobile/${nativeApplicationVersion}+${nativeBuildVersion} (${osName}; ${osVersion}; ${modelName})`;
         const managedConfig = ManagedApp.enabled ? Emm.getManagedConfig<ManagedConfig>() : undefined;
         const headers: Record<string, string> = {
             [ClientConstants.HEADER_USER_AGENT]: userAgent,
             ...(preauthSecret ? {[ClientConstants.HEADER_X_MATTERMOST_PREAUTH_SECRET]: preauthSecret} : {}),
+            ...getCustomHeadersRecord(customHeaders),
             ...this.DEFAULT_CONFIG.headers,
         };
 

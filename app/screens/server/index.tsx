@@ -14,6 +14,7 @@ import {doPing} from '@actions/remote/general';
 import {fetchConfigAndLicense} from '@actions/remote/systems';
 import LocalConfig from '@assets/config.json';
 import AppVersion from '@components/app_version';
+import {customHeadersErrorMessages, customHeadersMessages} from '@components/custom_headers_inputs';
 import {Screens, Launch, DeepLink} from '@constants';
 import useDidMount from '@hooks/did_mount';
 import {useScreenTransitionAnimation} from '@hooks/screen_transition_animation';
@@ -24,6 +25,7 @@ import SecurityManager from '@managers/security_manager';
 import {getServerByDisplayName, getServerByIdentifier} from '@queries/app/servers';
 import Background from '@screens/background';
 import {navigateBack, navigateToScreen} from '@screens/navigation';
+import {parseCustomHeaders} from '@utils/custom_headers';
 import {getErrorMessage} from '@utils/errors';
 import {canReceiveNotifications} from '@utils/push_proxy';
 import {loginOptions} from '@utils/server';
@@ -84,10 +86,13 @@ const Server = ({
     const [displayName, setDisplayName] = useState<string>('');
     const [buttonDisabled, setButtonDisabled] = useState(true);
     const [preauthSecret, setPreauthSecret] = useState<string>('');
+    const [customHeadersEnabled, setCustomHeadersEnabled] = useState<boolean>(false);
+    const [customHeaders, setCustomHeaders] = useState<CustomHeader[]>([]);
     const [url, setUrl] = useState<string>('');
     const [displayNameError, setDisplayNameError] = useState<string | undefined>();
     const [urlError, setUrlError] = useState<string | undefined>();
     const [preauthSecretError, setPreauthSecretError] = useState<string | undefined>();
+    const [customHeadersError, setCustomHeadersError] = useState<string | undefined>();
     const [showAdvancedOptions, setShowAdvancedOptions] = useState<boolean>(false);
     const styles = getStyleSheet(theme);
     const {formatMessage} = intl;
@@ -139,12 +144,12 @@ const Server = ({
     }, [managedConfig?.allowOtherServers, managedConfig?.serverUrl, managedConfig?.serverName, defaultServerUrl]);
 
     useEffect(() => {
-        if (url && displayName && !urlError && !preauthSecretError) {
+        if (url && displayName && !urlError && !preauthSecretError && !customHeadersError) {
             setButtonDisabled(false);
         } else {
             setButtonDisabled(true);
         }
-    }, [url, displayName, urlError, preauthSecretError]);
+    }, [url, displayName, urlError, preauthSecretError, customHeadersError]);
 
     useEffect(() => {
         const unsubscribe = navigation.addListener('beforeRemove', (e) => {
@@ -247,6 +252,13 @@ const Server = ({
             setUrlError(undefined);
         }
 
+        const customHeadersParseError = customHeadersEnabled ? parseCustomHeaders(customHeaders).error : undefined;
+        if (customHeadersParseError) {
+            setCustomHeadersError(formatMessage(customHeadersErrorMessages[customHeadersParseError]));
+            setShowAdvancedOptions(true);
+            return;
+        }
+
         const server = await getServerByDisplayName(displayName);
         const credentials = await getServerCredentials(serverUrl);
         if (server && server.lastActiveAt > 0 && credentials?.token) {
@@ -284,6 +296,16 @@ const Server = ({
         }
     }, [urlError, preauthSecretError]);
 
+    const handleCustomHeadersEnabledChange = useCallback((enabled: boolean) => {
+        setCustomHeadersEnabled(enabled);
+        setCustomHeadersError(undefined);
+    }, []);
+
+    const handleCustomHeadersChange = useCallback((headers: CustomHeader[]) => {
+        setCustomHeaders(headers);
+        setCustomHeadersError(undefined);
+    }, []);
+
     const isServerUrlValid = (serverUrl?: string) => {
         const testUrl = sanitizeUrl(serverUrl ?? url);
         if (!isValidUrl(testUrl)) {
@@ -315,7 +337,15 @@ const Server = ({
             cancelPing = undefined;
         };
 
-        const headRequest = await getServerUrlAfterRedirect(pingUrl, !retryWithHttp, preauthSecret.trim() || undefined);
+        // handleConnect rejects invalid headers before connecting
+        const headersToSend = customHeadersEnabled ? parseCustomHeaders(customHeaders).headers : undefined;
+        const headRequest = await getServerUrlAfterRedirect(pingUrl, !retryWithHttp, preauthSecret.trim() || undefined, headersToSend);
+        if (headRequest.isCloudflareAccessError) {
+            cancelPing();
+            setCustomHeadersError(formatMessage(headersToSend?.length ? customHeadersMessages.cloudflareAccessRejected : customHeadersMessages.cloudflareAccessRequired));
+            setShowAdvancedOptions(true);
+            return;
+        }
         if (!headRequest.url) {
             cancelPing();
             if (retryWithHttp) {
@@ -333,6 +363,7 @@ const Server = ({
             true, // verifyPushProxy
             managedConfig?.timeout ? parseInt(managedConfig?.timeout, 10) : undefined, // timeoutInterval
             preauthSecret.trim() || undefined, // preauthSecret
+            headersToSend, // customHeaders
         );
 
         if (canceled) {
@@ -469,10 +500,15 @@ const Server = ({
                     <ServerForm
                         autoFocus={additionalServer}
                         buttonDisabled={buttonDisabled}
+                        customHeaders={customHeaders}
+                        customHeadersEnabled={customHeadersEnabled}
+                        customHeadersError={customHeadersError}
                         connecting={connecting}
                         displayName={displayName}
                         displayNameError={displayNameError}
                         disableServerUrl={disableServerUrl}
+                        handleCustomHeadersChange={handleCustomHeadersChange}
+                        handleCustomHeadersEnabledChange={handleCustomHeadersEnabledChange}
                         handleConnect={handleConnect}
                         handleDisplayNameTextChanged={handleDisplayNameTextChanged}
                         handlePreauthSecretTextChanged={handlePreauthSecretTextChanged}

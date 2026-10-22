@@ -93,8 +93,8 @@ class Client extends mix(ClientBase).with(
     ClientPlaybooks,
 ) {
     // eslint-disable-next-line no-useless-constructor
-    constructor(apiClient: APIClientInterface, serverUrl: string, bearerToken?: string, csrfToken?: string, preauthSecret?: string) {
-        super(apiClient, serverUrl, bearerToken, csrfToken, preauthSecret);
+    constructor(apiClient: APIClientInterface, serverUrl: string, bearerToken?: string, csrfToken?: string, preauthSecret?: string, customHeaders?: CustomHeader[]) {
+        super(apiClient, serverUrl, bearerToken, csrfToken, preauthSecret, customHeaders);
     }
 }
 

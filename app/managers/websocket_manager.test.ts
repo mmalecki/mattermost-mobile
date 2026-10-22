@@ -100,7 +100,7 @@ describe('WebsocketManager', () => {
             await manager.init(mockCredentials);
 
             expect(NetInfo.fetch).toHaveBeenCalled();
-            expect(WebSocketClient).toHaveBeenCalledWith(mockServerUrl, mockToken, undefined);
+            expect(WebSocketClient).toHaveBeenCalledWith(mockServerUrl, mockToken, undefined, undefined);
             expect(NetInfo.addEventListener).toHaveBeenCalled();
         });
 

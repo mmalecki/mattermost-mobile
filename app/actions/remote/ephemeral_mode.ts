@@ -5,7 +5,7 @@ import NetInfo from '@react-native-community/netinfo';
 
 import {settleAuditEvents} from '@actions/local/ephemeral_mode/audit_queue';
 import {EphemeralModeAuditEventKind, MAX_AUDIT_SEND_ATTEMPTS, type EphemeralModeAuditEvent} from '@constants/ephemeral_mode';
-import {getPreauthSecret} from '@init/credentials';
+import {getCustomHeaders, getPreauthSecret} from '@init/credentials';
 import NetworkManager from '@managers/network_manager';
 import {getEphemeralModeAuditEvents} from '@queries/app/global';
 import {getAllServers} from '@queries/app/servers';
@@ -61,7 +61,7 @@ export const flushAuditQueue = async (serverUrl: string): Promise<void> => {
         } catch {
             // Logged out: /wipe is the only kind still sendable, and only tokenless.
             if (pending.some(isSessionWipe)) {
-                client = await NetworkManager.createClient(serverUrl, undefined, await getPreauthSecret(serverUrl));
+                client = await NetworkManager.createClient(serverUrl, undefined, await getPreauthSecret(serverUrl), await getCustomHeaders(serverUrl));
                 tokenless = true;
             }
         }

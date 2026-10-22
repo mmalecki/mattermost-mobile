@@ -17,6 +17,11 @@ export type SharedItem = Readonly<{
   videoThumb?: string;
 }>;
 
+export type ShareExtensionHeader = {
+  name: string;
+  value: string;
+};
+
 export type ShareExtensionDataToSend = {
   channelId: string;
   files: SharedItem[];
@@ -25,6 +30,7 @@ export type ShareExtensionDataToSend = {
   token: string;
   userId: string;
   preauthSecret?: string;
+  customHeaders?: ShareExtensionHeader[];
 }
 
 export interface Spec extends TurboModule {

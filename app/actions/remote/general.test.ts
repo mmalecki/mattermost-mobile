@@ -72,7 +72,7 @@ describe('doPing', () => {
     it('should not invalidate client when client is provided externally', async () => {
         const mockClient = makePingClient({ping: jest.fn().mockResolvedValue({ok: false, code: 500, headers: {}})});
 
-        const result = await doPing(serverUrl, false, 5000, undefined, mockClient as any);
+        const result = await doPing(serverUrl, false, 5000, undefined, undefined, mockClient as any);
         expect(result).toHaveProperty('error');
         expect(NetworkManager.invalidateClient).not.toHaveBeenCalled();
     });
@@ -105,7 +105,7 @@ describe('doPing', () => {
             ping: jest.fn().mockResolvedValue({ok: true, code: 200, data: {CanReceiveNotifications: null}, headers: {}}),
         });
 
-        const result = await doPing(serverUrl, true, 5000, undefined, mockClient as any) as any;
+        const result = await doPing(serverUrl, true, 5000, undefined, undefined, mockClient as any) as any;
         expect(getDeviceToken).not.toHaveBeenCalled();
         expect(result.canReceiveNotifications).toBe(PUSH_PROXY_RESPONSE_VERIFIED);
 

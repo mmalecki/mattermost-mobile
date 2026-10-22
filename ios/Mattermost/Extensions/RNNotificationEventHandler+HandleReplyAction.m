@@ -84,6 +84,7 @@ static void sendReplyUsingMattermost(UNNotificationResponse *response,
   NSDictionary *credentials = [[Keychain default] getCredentialsObjcFor:serverUrl];
   NSString *sessionToken = credentials[@"token"];
   NSString *preauthSecret = credentials[@"preauthSecret"];
+  NSDictionary<NSString *, NSString *> *customHeaders = credentials[@"customHeaders"];
   if (sessionToken.length == 0) {
     postLocalFailureNotification(nil);
     callCompletionOnMain(completion);
@@ -136,6 +137,9 @@ static void sendReplyUsingMattermost(UNNotificationResponse *response,
   if ([preauthSecret isKindOfClass:NSString.class] && preauthSecret.length > 0) {
     [req setValue:preauthSecret forHTTPHeaderField:@"X-Mattermost-Preauth-Secret"];
   }
+  [customHeaders enumerateKeysAndObjectsUsingBlock:^(NSString *name, NSString *value, BOOL *stop) {
+    [req setValue:value forHTTPHeaderField:name];
+  }];
   NSString *sessionAttributesHeader = [SessionAttributesOutboundHeader getOutboundHeader:urlString];
   if (sessionAttributesHeader.length > 0) {
     [req setValue:sessionAttributesHeader forHTTPHeaderField:SessionAttributesOutboundHeader.headerName];

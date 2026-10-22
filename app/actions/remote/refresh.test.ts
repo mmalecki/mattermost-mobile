@@ -86,7 +86,7 @@ describe('applyPersistenceModeChange', () => {
         expect(EphemeralModeManager.removeServer).toHaveBeenCalledWith(serverUrl);
         expect(wipeServerDatabaseWithRetry).toHaveBeenCalledWith(serverUrl);
         expect(refetchCurrentUser).toHaveBeenCalledWith(serverUrl, undefined);
-        expect(WebsocketManager.createClient).toHaveBeenCalledWith(serverUrl, 'tok', 'preauth');
+        expect(WebsocketManager.createClient).toHaveBeenCalledWith(serverUrl, 'tok', 'preauth', undefined);
         expect(WebsocketManager.initializeClient).toHaveBeenCalledWith(serverUrl);
         expect(setActiveServerDatabaseSpy).toHaveBeenCalledWith(serverUrl);
         expect(terminateSession).not.toHaveBeenCalled();

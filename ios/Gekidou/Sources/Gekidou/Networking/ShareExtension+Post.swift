@@ -49,6 +49,10 @@ extension ShareExtension {
                             uploadRequest.addValue(preauthSecret, forHTTPHeaderField: GekidouConstants.HEADER_X_MATTERMOST_PREAUTH_SECRET)
                         }
 
+                        for (name, value) in credentials.customHeaders {
+                            uploadRequest.addValue(value, forHTTPHeaderField: name)
+                        }
+
                         if let task = backgroundSession?.uploadTask(with: uploadRequest, fromFile: fileUrl) {
                             os_log(
                                 OSLogType.default,

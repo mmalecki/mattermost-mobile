@@ -10,6 +10,7 @@ import Foundation
 public struct ServerCredentials {
     public let token: String?
     public let preauthSecret: String?
+    public let customHeaders: [String: String]
 }
 
 enum KeychainError: Error {
@@ -106,7 +107,8 @@ public class Keychain: NSObject {
         guard let credentials = try? getCredentials(for: serverUrl) else { return nil }
         return [
             "token": credentials.token as Any,
-            "preauthSecret": credentials.preauthSecret as Any
+            "preauthSecret": credentials.preauthSecret as Any,
+            "customHeaders": credentials.customHeaders
         ]
     }
 
@@ -114,8 +116,9 @@ public class Keychain: NSObject {
         // Get main token from serverUrl key
         let token = try getMainToken(for: serverUrl)
         let preauthSecret = try? getPreauthSecret(for: serverUrl)
+        let customHeaders = getCustomHeaders(for: serverUrl)
 
-        return ServerCredentials(token: token, preauthSecret: preauthSecret)
+        return ServerCredentials(token: token, preauthSecret: preauthSecret, customHeaders: customHeaders)
     }
 
     private func getMainToken(for serverUrl: String) throws -> String? {
@@ -148,6 +151,36 @@ public class Keychain: NSObject {
         }
 
         return nil
+    }
+
+    // Stored from JS as a generic password whose data is a JSON array of {name, value} objects
+    private func getCustomHeaders(for serverUrl: String) -> [String: String] {
+        var query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: "custom-headers:\(serverUrl)",
+            kSecMatchLimit: kSecMatchLimitOne,
+            kSecReturnData: kCFBooleanTrue as Any
+        ]
+
+        if let accessGroup = self.accessGroup {
+            query[kSecAttrAccessGroup] = accessGroup
+        }
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let headers = try? JSONSerialization.jsonObject(with: data) as? [[String: String]] else {
+            return [:]
+        }
+
+        var customHeaders: [String: String] = [:]
+        for header in headers {
+            if let name = header["name"], let value = header["value"] {
+                customHeaders[name] = value
+            }
+        }
+        return customHeaders
     }
 
     private func buildIdentityQuery(for host: String) throws -> [CFString: Any] {

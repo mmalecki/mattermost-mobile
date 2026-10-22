@@ -12,6 +12,7 @@ import ProgressiveImage from '@components/progressive_image';
 import {useServerUrl} from '@context/server';
 import {useTheme} from '@context/theme';
 import {getServerCredentials} from '@init/credentials';
+import {getCustomHeadersRecord} from '@utils/custom_headers';
 import {fileExists} from '@utils/file';
 import {calculateDimensions} from '@utils/images';
 import {urlSafeBase64Encode} from '@utils/security';
@@ -106,7 +107,7 @@ const VideoFile = ({
                     const videoUrl = buildFileUrl(serverUrl, data.id!);
                     if (videoUrl) {
                         const cred = await getServerCredentials(serverUrl);
-                        const headers: Record<string, string> = {};
+                        const headers: Record<string, string> = getCustomHeadersRecord(cred?.customHeaders);
                         if (cred?.token) {
                             headers.Authorization = `Bearer ${cred.token}`;
                         }

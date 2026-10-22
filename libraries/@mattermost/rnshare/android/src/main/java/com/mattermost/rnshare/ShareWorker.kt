@@ -95,18 +95,15 @@ class ShareWorker(private val context: Context, workerParameters: WorkerParamete
             val files = if (jsonObject.has("files")) jsonObject.getJSONArray("files") else null
             val serverUrl = jsonObject.getString("serverUrl")
             val token = jsonObject.getString("token")
-            val preauthSecret = if (jsonObject.has("preauthSecret") && !jsonObject.isNull("preauthSecret")) {
-                val secret = jsonObject.getString("preauthSecret")
-                if (secret.isNotEmpty()) secret else null
-            } else null
+            val extraHeaders = buildExtraHeaders(jsonObject)
             val postData = buildPostObject(jsonObject)
 
             if (files != null && files.length() > 0) {
                 setForegroundAsync(createForegroundInfo())
-                return uploadFiles(serverUrl, token, preauthSecret, files, postData)
+                return uploadFiles(serverUrl, token, extraHeaders, files, postData)
             } else {
                 try {
-                    return post(serverUrl, token, preauthSecret, postData)
+                    return post(serverUrl, token, extraHeaders, postData)
                 } catch (e: IOException) {
                     Log.e(MattermostShareImpl.NAME, "Error sending the post", e)
                     return Result.failure()
@@ -117,6 +114,26 @@ class ShareWorker(private val context: Context, workerParameters: WorkerParamete
             return Result.failure()
         } finally {
             tempFolder?.let { RealPathUtil.deleteTempFiles(File(it)) }
+        }
+    }
+
+    private fun optionalString(data: JSONObject, key: String): String? {
+        if (!data.has(key) || data.isNull(key)) {
+            return null
+        }
+        return data.getString(key).ifEmpty { null }
+    }
+
+    // Headers needed to get through to the server: the pre-auth secret and the server's custom headers
+    private fun buildExtraHeaders(data: JSONObject): Map<String, String> = buildMap {
+        optionalString(data, "preauthSecret")?.let { put(HEADER_X_MATTERMOST_PREAUTH_SECRET, it) }
+
+        val customHeaders = data.optJSONArray("customHeaders") ?: return@buildMap
+        for (i in 0 until customHeaders.length()) {
+            val header = customHeaders.optJSONObject(i) ?: continue
+            val name = optionalString(header, "name") ?: continue
+            val value = optionalString(header, "value") ?: continue
+            put(name, value)
         }
     }
 
@@ -133,7 +150,7 @@ class ShareWorker(private val context: Context, workerParameters: WorkerParamete
     }
 
     @Throws(IOException::class)
-    private fun post(serverUrl: String, token: String, preauthSecret: String?, postData: JSONObject): Result {
+    private fun post(serverUrl: String, token: String, extraHeaders: Map<String, String>, postData: JSONObject): Result {
         val body = postData.toString().toRequestBody(jsonType)
         val requestBuilder = Request.Builder()
                 .header("Authorization", "BEARER $token")
@@ -144,9 +161,7 @@ class ShareWorker(private val context: Context, workerParameters: WorkerParamete
             requestBuilder.header(HEADER_SESSION_ATTRIBUTES, header)
         }
 
-        if (preauthSecret != null) {
-            requestBuilder.header(HEADER_X_MATTERMOST_PREAUTH_SECRET, preauthSecret)
-        }
+        extraHeaders.forEach { (name, value) -> requestBuilder.header(name, value) }
 
         val request = requestBuilder.build()
 
@@ -156,7 +171,7 @@ class ShareWorker(private val context: Context, workerParameters: WorkerParamete
         return Result.success()
     }
 
-    private fun uploadFiles(serverUrl: String, token: String, preauthSecret: String?, files: JSONArray, postData: JSONObject): Result {
+    private fun uploadFiles(serverUrl: String, token: String, extraHeaders: Map<String, String>, files: JSONArray, postData: JSONObject): Result {
         try {
             val builder = MultipartBody.Builder()
                     .setType(MultipartBody.FORM)
@@ -184,9 +199,7 @@ class ShareWorker(private val context: Context, workerParameters: WorkerParamete
                 requestBuilder.header(HEADER_SESSION_ATTRIBUTES, header)
             }
 
-            if (preauthSecret != null) {
-                requestBuilder.header(HEADER_X_MATTERMOST_PREAUTH_SECRET, preauthSecret)
-            }
+            extraHeaders.forEach { (name, value) -> requestBuilder.header(name, value) }
 
             val request = requestBuilder.build()
 
@@ -206,7 +219,7 @@ class ShareWorker(private val context: Context, workerParameters: WorkerParamete
                             fileIds.put(fileInfo.getString("id"))
                         }
                         postData.put("file_ids", fileIds)
-                        return post(serverUrl, token, preauthSecret, postData)
+                        return post(serverUrl, token, extraHeaders, postData)
                     }
                     return Result.failure()
                 }

@@ -4,7 +4,7 @@
 import {doPing} from '@actions/remote/general';
 import {fetchConfigAndLicense, type ConfigAndLicenseRequest} from '@actions/remote/systems';
 import DatabaseManager from '@database/manager';
-import {getPreauthSecret} from '@init/credentials';
+import {getCustomHeaders, getPreauthSecret} from '@init/credentials';
 import SecurityManager from '@managers/security_manager';
 import WebsocketManager from '@managers/websocket_manager';
 import {getServer, getServerByIdentifier} from '@queries/app/servers';
@@ -49,10 +49,11 @@ export async function switchToServerAndLogin(serverUrl: string, intl: IntlShape,
         return;
     }
 
-    // Retrieve pre-auth secret from keychain if it exists
+    // Retrieve pre-auth secret and custom headers from keychain if they exist
     const preauthSecret = await getPreauthSecret(server.url);
+    const customHeaders = await getCustomHeaders(server.url);
 
-    const result = await doPing(server.url, true, 5000, preauthSecret);
+    const result = await doPing(server.url, true, 5000, preauthSecret, customHeaders);
     if (result.error) {
         alertServerError(intl, result.error);
         callback();

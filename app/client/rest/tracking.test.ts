@@ -110,7 +110,19 @@ describe('ClientTracking', () => {
         client.setClientCredentials(token);
 
         expect(client.requestHeaders[ClientConstants.HEADER_AUTH]).toBe(`${ClientConstants.HEADER_BEARER} ${token}`);
-        expect(require('@init/credentials').setServerCredentials).toHaveBeenCalledWith(apiClientMock.baseUrl, token, undefined);
+        expect(require('@init/credentials').setServerCredentials).toHaveBeenCalledWith(apiClientMock.baseUrl, token, undefined, undefined);
+    });
+
+    it('should send and persist the custom headers it was created with', () => {
+        const customHeaders = [{name: 'CF-Access-Client-Id', value: 'id.access'}, {name: 'CF-Access-Client-Secret', value: 'secret'}];
+        const customHeadersClient = new ClientTracking(apiClientMock as unknown as APIClientInterface, customHeaders);
+        customHeadersClient.setClientCredentials('testToken');
+
+        expect(customHeadersClient.getRequestHeaders('GET')).toMatchObject({
+            'CF-Access-Client-Id': 'id.access',
+            'CF-Access-Client-Secret': 'secret',
+        });
+        expect(require('@init/credentials').setServerCredentials).toHaveBeenCalledWith(apiClientMock.baseUrl, 'testToken', undefined, customHeaders);
     });
 
     it('should set CSRF token', () => {

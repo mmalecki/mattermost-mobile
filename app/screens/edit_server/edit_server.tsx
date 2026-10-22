@@ -8,6 +8,7 @@ import {KeyboardAwareScrollView} from 'react-native-keyboard-controller';
 import {SafeAreaView} from 'react-native-safe-area-context';
 
 import {doPing} from '@actions/remote/general';
+import {customHeadersErrorMessages, customHeadersMessages} from '@components/custom_headers_inputs';
 import {Screens} from '@constants';
 import DatabaseManager from '@database/manager';
 import useAndroidHardwareBackHandler from '@hooks/android_back_handler';
@@ -16,6 +17,7 @@ import NetworkManager from '@managers/network_manager';
 import {getServerByDisplayName} from '@queries/app/servers';
 import Background from '@screens/background';
 import {navigateBack} from '@screens/navigation';
+import {areCustomHeadersEqual, parseCustomHeaders} from '@utils/custom_headers';
 import {getErrorMessage} from '@utils/errors';
 import {changeOpacity, makeStyleSheetFromTheme} from '@utils/theme';
 import {getServerUrlAfterRedirect} from '@utils/url';
@@ -39,7 +41,7 @@ const getStyleSheet = makeStyleSheetFromTheme((theme: Theme) => ({
     },
     scrollContainer: {
         alignItems: 'center',
-        height: '100%',
+        flexGrow: 1,
         justifyContent: 'center',
     },
 }));
@@ -54,6 +56,10 @@ const EditServer = ({server, theme}: ServerProps) => {
     const [preauthSecret, setPreauthSecret] = useState<string>('');
     const [initialPreauthSecret, setInitialPreauthSecret] = useState<string>('');
     const [preauthSecretError, setPreauthSecretError] = useState<string | undefined>();
+    const [customHeadersEnabled, setCustomHeadersEnabled] = useState<boolean>(false);
+    const [customHeaders, setCustomHeaders] = useState<CustomHeader[]>([]);
+    const [initialCustomHeaders, setInitialCustomHeaders] = useState<CustomHeader[] | undefined>();
+    const [customHeadersError, setCustomHeadersError] = useState<string | undefined>();
     const [showAdvancedOptions, setShowAdvancedOptions] = useState<boolean>(false);
     const [validating, setValidating] = useState(false);
     const styles = getStyleSheet(theme);
@@ -62,7 +68,7 @@ const EditServer = ({server, theme}: ServerProps) => {
         navigateBack();
     }, []);
 
-    // Load current preauth secret from credentials
+    // Load current preauth secret and custom headers from credentials
     useEffect(() => {
         const loadCredentials = async () => {
             try {
@@ -70,9 +76,12 @@ const EditServer = ({server, theme}: ServerProps) => {
                 const currentPreauthSecret = credentials?.preauthSecret || '';
                 setPreauthSecret(currentPreauthSecret);
                 setInitialPreauthSecret(currentPreauthSecret);
+                setCustomHeadersEnabled(Boolean(credentials?.customHeaders?.length));
+                setCustomHeaders(credentials?.customHeaders ?? []);
+                setInitialCustomHeaders(credentials?.customHeaders);
 
-                // Auto-open advanced options if preauth secret exists
-                if (currentPreauthSecret) {
+                // Auto-open advanced options if preauth secret or custom headers exist
+                if (currentPreauthSecret || credentials?.customHeaders?.length) {
                     setShowAdvancedOptions(true);
                 }
             } catch (error) {
@@ -87,9 +96,8 @@ const EditServer = ({server, theme}: ServerProps) => {
         setButtonDisabled(Boolean(!displayName));
     }, [displayName]);
 
-    // Validate server connection with preauth secret
-    const validateServer = useCallback(async (): Promise<boolean> => {
-        // Only validate if preauth secret has changed
+    // Validate server connection with preauth secret and custom headers
+    const validateServer = useCallback(async (headersToSend?: CustomHeader[]): Promise<boolean> => {
         setValidating(true);
 
         try {
@@ -99,7 +107,12 @@ const EditServer = ({server, theme}: ServerProps) => {
             const secretForValidation = trimmedSecret || undefined;
 
             // First try HEAD request
-            const headRequest = await getServerUrlAfterRedirect(server.url, true, secretForValidation);
+            const headRequest = await getServerUrlAfterRedirect(server.url, true, secretForValidation, headersToSend);
+            if (headRequest.isCloudflareAccessError) {
+                setCustomHeadersError(formatMessage(headersToSend?.length ? customHeadersMessages.cloudflareAccessRejected : customHeadersMessages.cloudflareAccessRequired));
+                setShowAdvancedOptions(true);
+                return false;
+            }
             if (!headRequest.url) {
                 setPreauthSecretError(getErrorMessage(headRequest.error, intl));
                 setShowAdvancedOptions(true);
@@ -112,6 +125,7 @@ const EditServer = ({server, theme}: ServerProps) => {
                 true, // verifyPushProxy
                 undefined, // timeoutInterval
                 secretForValidation, // preauthSecret
+                headersToSend, // customHeaders
             );
             if (result.error) {
                 if (result.isPreauthError) {
@@ -154,6 +168,14 @@ const EditServer = ({server, theme}: ServerProps) => {
             setPreauthSecretError(undefined);
         }
 
+        const parsedCustomHeaders = customHeadersEnabled ? parseCustomHeaders(customHeaders) : {headers: []};
+        if (parsedCustomHeaders.error) {
+            setCustomHeadersError(formatMessage(customHeadersErrorMessages[parsedCustomHeaders.error]));
+            setShowAdvancedOptions(true);
+            return;
+        }
+        const headersToSend = parsedCustomHeaders.headers.length ? parsedCustomHeaders.headers : undefined;
+
         setSaving(true);
 
         // Check display name uniqueness
@@ -168,10 +190,11 @@ const EditServer = ({server, theme}: ServerProps) => {
             return;
         }
 
-        // Only validate server connection if preauth secret has changed
+        // Only validate server connection if preauth secret or custom headers have changed
         const preauthSecretChanged = preauthSecret.trim() !== initialPreauthSecret.trim();
-        if (preauthSecretChanged) {
-            const isValidServer = await validateServer();
+        const customHeadersChanged = !areCustomHeadersEqual(headersToSend, initialCustomHeaders);
+        if (preauthSecretChanged || customHeadersChanged) {
+            const isValidServer = await validateServer(headersToSend);
             if (!isValidServer) {
                 setSaving(false);
                 return;
@@ -181,19 +204,19 @@ const EditServer = ({server, theme}: ServerProps) => {
         // Save display name
         await DatabaseManager.updateServerDisplayName(server.url, displayName);
 
-        // Save preauth secret to credentials (or remove if empty)
+        // Save preauth secret and custom headers to credentials (or remove if empty)
         const credentials = await getServerCredentials(server.url);
-        setServerCredentials(server.url, credentials?.token || '', preauthSecret.trim() || undefined);
+        setServerCredentials(server.url, credentials?.token || '', preauthSecret.trim() || undefined, headersToSend);
 
-        // Create and cache new client if preauth secret changed
+        // Create and cache new client if preauth secret or custom headers changed
         try {
-            await NetworkManager.createClient(server.url, credentials?.token, preauthSecret.trim() || undefined);
+            await NetworkManager.createClient(server.url, credentials?.token, preauthSecret.trim() || undefined, headersToSend);
         } catch (error) {
             // Client creation failed, but credentials are saved - continue with modal dismissal
         }
 
         navigateBack();
-    }, [buttonDisabled, displayName, displayNameError, preauthSecretError, server.url, preauthSecret, initialPreauthSecret, formatMessage, validateServer]);
+    }, [buttonDisabled, displayName, displayNameError, preauthSecretError, customHeadersEnabled, customHeaders, server.url, preauthSecret, initialPreauthSecret, initialCustomHeaders, formatMessage, validateServer]);
 
     const handleDisplayNameTextChanged = useCallback((text: string) => {
         setDisplayName(text);
@@ -203,6 +226,16 @@ const EditServer = ({server, theme}: ServerProps) => {
     const handlePreauthSecretTextChanged = useCallback((text: string) => {
         setPreauthSecret(text);
         setPreauthSecretError(undefined);
+    }, []);
+
+    const handleCustomHeadersEnabledChange = useCallback((enabled: boolean) => {
+        setCustomHeadersEnabled(enabled);
+        setCustomHeadersError(undefined);
+    }, []);
+
+    const handleCustomHeadersChange = useCallback((headers: CustomHeader[]) => {
+        setCustomHeaders(headers);
+        setCustomHeadersError(undefined);
     }, []);
 
     useAndroidHardwareBackHandler(Screens.EDIT_SERVER, close);
@@ -228,8 +261,13 @@ const EditServer = ({server, theme}: ServerProps) => {
                     <Form
                         buttonDisabled={buttonDisabled}
                         connecting={saving || validating}
+                        customHeaders={customHeaders}
+                        customHeadersEnabled={customHeadersEnabled}
+                        customHeadersError={customHeadersError}
                         displayName={displayName}
                         displayNameError={displayNameError}
+                        handleCustomHeadersChange={handleCustomHeadersChange}
+                        handleCustomHeadersEnabledChange={handleCustomHeadersEnabledChange}
                         handleUpdate={handleUpdate}
                         handleDisplayNameTextChanged={handleDisplayNameTextChanged}
                         handlePreauthSecretTextChanged={handlePreauthSecretTextChanged}

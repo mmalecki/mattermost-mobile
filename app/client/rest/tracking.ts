@@ -10,6 +10,7 @@ import {setServerCredentials} from '@init/credentials';
 import NetworkPerformanceManager from '@managers/network_performance_manager';
 import PerformanceMetricsManager from '@managers/performance_metrics_manager';
 import {NetworkRequestMetrics} from '@managers/performance_metrics_manager/constant';
+import {getCustomHeadersRecord} from '@utils/custom_headers';
 import {isErrorWithStatusCode} from '@utils/errors';
 import {getFormattedFileSize} from '@utils/file';
 import {logDebug, logInfo} from '@utils/log';
@@ -64,14 +65,17 @@ export default class ClientTracking {
     apiClient: APIClientInterface;
     csrfToken = '';
     requestHeaders: {[x: string]: string} = {};
+    customHeaders?: CustomHeader[];
     serverVersion = '';
     urlVersion = '/api/v4';
     enableLogging = false;
 
     requestGroups: Map<string, GroupData> = new Map();
 
-    constructor(apiClient: APIClientInterface) {
+    constructor(apiClient: APIClientInterface, customHeaders?: CustomHeader[]) {
         this.apiClient = apiClient;
+        this.customHeaders = customHeaders;
+        Object.assign(this.requestHeaders, getCustomHeadersRecord(customHeaders));
     }
 
     setClientCredentials(bearerToken: string, preauthSecret?: string) {
@@ -84,7 +88,7 @@ export default class ClientTracking {
             delete this.requestHeaders[ClientConstants.HEADER_X_MATTERMOST_PREAUTH_SECRET];
         }
 
-        setServerCredentials(this.apiClient.baseUrl, bearerToken, preauthSecret);
+        setServerCredentials(this.apiClient.baseUrl, bearerToken, preauthSecret, this.customHeaders);
     }
 
     setCSRFToken(csrfToken: string) {

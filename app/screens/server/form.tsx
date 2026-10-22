@@ -3,11 +3,12 @@
 
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {defineMessages, useIntl} from 'react-intl';
-import {Keyboard, Pressable, View} from 'react-native';
+import {Keyboard, type LayoutChangeEvent, Pressable, View} from 'react-native';
 import Animated, {FlipInEasyX, FlipOutXUp, useAnimatedStyle, useSharedValue, withTiming} from 'react-native-reanimated';
 
 import Button from '@components/button';
 import CompassIcon from '@components/compass_icon';
+import CustomHeadersInputs from '@components/custom_headers_inputs';
 import FloatingTextInput, {type FloatingTextInputRef} from '@components/floating_input/floating_text_input_label';
 import FormattedText from '@components/formatted_text';
 import {changeOpacity, makeStyleSheetFromTheme} from '@utils/theme';
@@ -17,10 +18,15 @@ type Props = {
     autoFocus?: boolean;
     buttonDisabled: boolean;
     connecting: boolean;
+    customHeaders: CustomHeader[];
+    customHeadersEnabled: boolean;
+    customHeadersError?: string;
     displayName?: string;
     displayNameError?: string;
     disableServerUrl: boolean;
     handleConnect: () => void;
+    handleCustomHeadersChange: (headers: CustomHeader[]) => void;
+    handleCustomHeadersEnabledChange: (enabled: boolean) => void;
     handleDisplayNameTextChanged: (text: string) => void;
     handlePreauthSecretTextChanged: (text: string) => void;
     handleUrlTextChanged: (text: string) => void;
@@ -109,17 +115,22 @@ const messages = defineMessages({
     },
 });
 
-const ADVANCED_OPTIONS_EXPANDED = 114;
+// Height of the Advanced Options header; the expanded height adds the measured content below it
 const ADVANCED_OPTIONS_COLLAPSED = 40;
 
 const ServerForm = ({
     autoFocus = false,
     buttonDisabled,
     connecting,
+    customHeaders,
+    customHeadersEnabled,
+    customHeadersError,
     displayName = '',
     displayNameError,
     disableServerUrl,
     handleConnect,
+    handleCustomHeadersChange,
+    handleCustomHeadersEnabledChange,
     handleDisplayNameTextChanged,
     handlePreauthSecretTextChanged,
     handleUrlTextChanged,
@@ -160,9 +171,21 @@ const ServerForm = ({
     }, [setShowAdvancedOptions]);
 
     const chevronRotation = useSharedValue(showAdvancedOptions ? 180 : 0);
+    const advancedOptionsContentHeight = useSharedValue(0);
     const advancedOptionsStyle = useAnimatedStyle(() => ({
-        height: showAdvancedOptions ? ADVANCED_OPTIONS_EXPANDED : withTiming(ADVANCED_OPTIONS_COLLAPSED, {duration: 250}),
+        height: showAdvancedOptions ? ADVANCED_OPTIONS_COLLAPSED + advancedOptionsContentHeight.value : withTiming(ADVANCED_OPTIONS_COLLAPSED, {duration: 250}),
     }));
+
+    const onAdvancedOptionsContentLayout = useCallback((e: LayoutChangeEvent) => {
+        // Ignore sub-pixel differences, which come from rounding as the height changes and would keep re-triggering the animation
+        const {height} = e.nativeEvent.layout;
+        if (Math.abs(height - advancedOptionsContentHeight.value) >= 1) {
+            advancedOptionsContentHeight.value = height;
+        }
+
+        // advancedOptionsContentHeight is a Reanimated shared value; its reference is stable and does not need to be in the dependency array.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         chevronRotation.value = withTiming(showAdvancedOptions ? 180 : 0, {duration: 250});
@@ -249,6 +272,7 @@ const ServerForm = ({
                 {showAdvancedOptions && (
                     <Animated.View
                         style={styles.advancedOptionsContent}
+                        onLayout={onAdvancedOptionsContentLayout}
                         entering={FlipInEasyX.duration(250)}
                         exiting={FlipOutXUp.duration(250)}
                     >
@@ -271,6 +295,15 @@ const ServerForm = ({
                             {...messages.preauthSecretHelp}
                             style={styles.chooseText}
                             testID='server_form.preauth_secret_help'
+                        />
+                        <CustomHeadersInputs
+                            enabled={customHeadersEnabled}
+                            error={customHeadersError}
+                            headers={customHeaders}
+                            onEnabledChange={handleCustomHeadersEnabledChange}
+                            onHeadersChange={handleCustomHeadersChange}
+                            testID='server_form.custom_headers'
+                            theme={theme}
                         />
                     </Animated.View>
                 )}

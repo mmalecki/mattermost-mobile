@@ -129,6 +129,9 @@ public class Network: NSObject {
             if let preauthSecret = credentials.preauthSecret {
                 request.addValue(preauthSecret, forHTTPHeaderField: GekidouConstants.HEADER_X_MATTERMOST_PREAUTH_SECRET)
             }
+            for (name, value) in credentials.customHeaders {
+                request.addValue(value, forHTTPHeaderField: name)
+            }
         }
         
         return request as URLRequest

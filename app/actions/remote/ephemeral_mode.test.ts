@@ -7,7 +7,7 @@ import {replaceEphemeralModeAuditEvents} from '@actions/app/global';
 import {enqueueAuditEvent, pruneAuditQueueOnSessionEnd} from '@actions/local/ephemeral_mode/audit_queue';
 import {EphemeralModeAuditEventKind, MAX_AUDIT_SEND_ATTEMPTS, type EphemeralModeAuditEventInput} from '@constants/ephemeral_mode';
 import DatabaseManager from '@database/manager';
-import {getPreauthSecret} from '@init/credentials';
+import {getCustomHeaders, getPreauthSecret} from '@init/credentials';
 import NetworkManager from '@managers/network_manager';
 import {getEphemeralModeAuditEvents} from '@queries/app/global';
 
@@ -15,6 +15,7 @@ import {flushAuditQueue, flushOrphanedAuditQueues} from './ephemeral_mode';
 
 jest.mock('@react-native-community/netinfo');
 jest.mock('@init/credentials', () => ({
+    getCustomHeaders: jest.fn(),
     getPreauthSecret: jest.fn(),
 }));
 jest.mock('@managers/network_manager', () => ({
@@ -301,12 +302,14 @@ describe('flushAuditQueue', () => {
             throw new Error(`${serverUrl} client not found`);
         });
         jest.mocked(getPreauthSecret).mockResolvedValue('preauth-secret');
+        const customHeaders = [{name: 'CF-Access-Client-Id', value: 'id.access'}];
+        jest.mocked(getCustomHeaders).mockResolvedValue(customHeaders);
         const tokenlessClient = makeClient();
         jest.mocked(NetworkManager.createClient).mockResolvedValue(tokenlessClient as any);
 
         await flushAuditQueue(serverUrl);
 
-        expect(NetworkManager.createClient).toHaveBeenCalledWith(serverUrl, undefined, 'preauth-secret');
+        expect(NetworkManager.createClient).toHaveBeenCalledWith(serverUrl, undefined, 'preauth-secret', customHeaders);
         expect(tokenlessClient.logSessionWipe).toHaveBeenCalledWith('sig1', 1000, undefined);
         expect(NetworkManager.invalidateClient).toHaveBeenCalledWith(serverUrl);
     });

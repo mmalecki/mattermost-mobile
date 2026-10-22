@@ -39,7 +39,7 @@ export async function loginEntry({serverUrl}: AfterLoginArgs): Promise<{error?: 
             const intunePolicy = await IntuneManager.getPolicy(serverUrl);
             SecurityManager.addServer(serverUrl, clData.config, false, intunePolicy);
             await EphemeralModeManager.addServer(serverUrl);
-            await WebsocketManager.createClient(serverUrl, credentials.token, credentials.preauthSecret);
+            await WebsocketManager.createClient(serverUrl, credentials.token, credentials.preauthSecret, credentials.customHeaders);
             await WebsocketManager.initializeClient(serverUrl, 'Login');
         }
 

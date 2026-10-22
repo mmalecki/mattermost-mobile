@@ -61,7 +61,7 @@ export const applyPersistenceModeChange = async (serverUrl: string): Promise<{er
         }
 
         if (credentials?.token) {
-            await WebsocketManager.createClient(serverUrl, credentials.token, credentials.preauthSecret);
+            await WebsocketManager.createClient(serverUrl, credentials.token, credentials.preauthSecret, credentials.customHeaders);
             await WebsocketManager.initializeClient(serverUrl);
         }
 

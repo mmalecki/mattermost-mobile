@@ -193,6 +193,24 @@ describe('getServerUrlAfterRedirect', () => {
         const result = await getServerUrlAfterRedirect(serverUrl);
         expect(result).toEqual({error});
     });
+
+    test('should send the custom headers', async () => {
+        mockedHead.mockResolvedValue({} as ClientResponse);
+        await getServerUrlAfterRedirect('https://example.com', false, undefined, [{name: 'CF-Access-Client-Id', value: 'id.access'}, {name: 'CF-Access-Client-Secret', value: 'secret'}]);
+        expect(mockedHead).toHaveBeenCalledWith('https://example.com', {
+            headers: {
+                'CF-Access-Client-Id': 'id.access',
+                'CF-Access-Client-Secret': 'secret',
+            },
+        });
+    });
+
+    test('should flag a redirect to the Cloudflare Access login page instead of following it', async () => {
+        mockedHead.mockResolvedValue({redirectUrls: ['https://team.cloudflareaccess.com/cdn-cgi/access/login/example.com']} as ClientResponse);
+        const result = await getServerUrlAfterRedirect('https://example.com');
+        expect(result.url).toBeUndefined();
+        expect(result.isCloudflareAccessError).toBe(true);
+    });
 });
 
 describe('stripTrailingSlashes', () => {

@@ -480,6 +480,7 @@ export const magicLinkLogin = async (serverUrl: string, token: string): Promise<
             true, // verifyPushProxy
             undefined, // timeoutInterval
             undefined, // preauthSecret
+            undefined, // customHeaders
             client, // client
         );
         if (!pingResult.error && pingResult.canReceiveNotifications) {

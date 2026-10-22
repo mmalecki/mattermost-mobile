@@ -9,7 +9,7 @@ import {fetchConfigAndLicense} from '@actions/remote/systems';
 import {Events} from '@constants';
 import DatabaseManager from '@database/manager';
 import {DEFAULT_LOCALE, getTranslations} from '@i18n';
-import {getPreauthSecret} from '@init/credentials';
+import {getCustomHeaders, getPreauthSecret} from '@init/credentials';
 import SecurityManager from '@managers/security_manager';
 import WebsocketManager from '@managers/websocket_manager';
 import {getServer, getServerByIdentifier} from '@queries/app/servers';
@@ -181,14 +181,16 @@ describe('switchToServerAndLogin', () => {
         expect(callback).toHaveBeenCalled();
     });
 
-    it('should retrieve and use pre-auth secret when reconnecting after logout', async () => {
+    it('should retrieve and use pre-auth secret and custom headers when reconnecting after logout', async () => {
         const server = {url: 'serverUrl', displayName: 'Server'} as ServersModel;
         const config = {DiagnosticId: 'diagId'} as ClientConfig;
         const license = {} as ClientLicense;
         const preauthSecret = 'test-secret-123';
+        const customHeaders = [{name: 'CF-Access-Client-Id', value: 'id.access'}];
 
         jest.mocked(getServer).mockResolvedValueOnce(server);
         jest.mocked(getPreauthSecret).mockResolvedValueOnce(preauthSecret);
+        jest.mocked(getCustomHeaders).mockResolvedValueOnce(customHeaders);
         jest.mocked(doPing).mockResolvedValueOnce({});
         jest.mocked(fetchConfigAndLicense).mockResolvedValueOnce({config, license});
         jest.mocked(getServerByIdentifier).mockResolvedValueOnce(undefined);
@@ -196,7 +198,8 @@ describe('switchToServerAndLogin', () => {
         await Actions.switchToServerAndLogin('serverUrl', intl, jest.fn());
 
         expect(getPreauthSecret).toHaveBeenCalledWith('serverUrl');
-        expect(doPing).toHaveBeenCalledWith('serverUrl', true, 5000, preauthSecret);
+        expect(getCustomHeaders).toHaveBeenCalledWith('serverUrl');
+        expect(doPing).toHaveBeenCalledWith('serverUrl', true, 5000, preauthSecret, customHeaders);
     });
 
     it('should work correctly when no pre-auth secret is stored', async () => {
@@ -213,7 +216,7 @@ describe('switchToServerAndLogin', () => {
         await Actions.switchToServerAndLogin('serverUrl', intl, jest.fn());
 
         expect(getPreauthSecret).toHaveBeenCalledWith('serverUrl');
-        expect(doPing).toHaveBeenCalledWith('serverUrl', true, 5000, undefined);
+        expect(doPing).toHaveBeenCalledWith('serverUrl', true, 5000, undefined, undefined);
     });
 
     it('should pass pre-auth secret to doPing even when ping fails', async () => {
@@ -227,7 +230,7 @@ describe('switchToServerAndLogin', () => {
         await Actions.switchToServerAndLogin('serverUrl', intl, jest.fn());
 
         expect(getPreauthSecret).toHaveBeenCalledWith('serverUrl');
-        expect(doPing).toHaveBeenCalledWith('serverUrl', true, 5000, preauthSecret);
+        expect(doPing).toHaveBeenCalledWith('serverUrl', true, 5000, preauthSecret, undefined);
         expect(alertServerError).toHaveBeenCalledWith(intl, 'ping error');
     });
 });

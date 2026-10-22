@@ -9,6 +9,7 @@ import {WebsocketEvents} from '@constants';
 import DatabaseManager from '@database/manager';
 import {getConfigValue} from '@queries/servers/system';
 import {hasReliableWebsocket} from '@utils/config';
+import {getCustomHeadersRecord} from '@utils/custom_headers';
 import {toMilliseconds} from '@utils/datetime';
 import {logDebug, logError, logInfo, logWarning} from '@utils/log';
 
@@ -29,6 +30,7 @@ export default class WebSocketClient {
     private connectionId = '';
     private token: string;
     private preauthSecret?: string;
+    private customHeaders?: CustomHeader[];
     private stop = false;
     private url = '';
     private serverUrl: string;
@@ -62,10 +64,11 @@ export default class WebSocketClient {
     private closeCallback?: (connectFailCount: number) => void;
     private connectingCallback?: () => void;
 
-    constructor(serverUrl: string, token: string, preauthSecret?: string) {
+    constructor(serverUrl: string, token: string, preauthSecret?: string, customHeaders?: CustomHeader[]) {
         this.token = token;
         this.serverUrl = serverUrl;
         this.preauthSecret = preauthSecret;
+        this.customHeaders = customHeaders;
     }
 
     public async initialize(opts = {}, shouldSkipSync = false) {
@@ -139,7 +142,7 @@ export default class WebSocketClient {
         this.shouldSkipSync = shouldSkipSync;
 
         try {
-            const headers: ClientHeaders = {origin};
+            const headers: ClientHeaders = {origin, ...getCustomHeadersRecord(this.customHeaders)};
             if (Platform.OS === 'android') {
                 // Required to properly handled the reliableWebsocket reconnection
                 // iOS is using he underlying cookieJar

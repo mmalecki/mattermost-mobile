@@ -53,10 +53,10 @@ class WebsocketManagerSingleton {
         this.netConnected = Boolean(netInfo.isConnected);
         this.netType = netInfo.type;
         await Promise.all(serverCredentials.map(
-            async ({serverUrl, token, preauthSecret}) => {
+            async ({serverUrl, token, preauthSecret, customHeaders}) => {
                 try {
                     DatabaseManager.getServerDatabaseAndOperator(serverUrl);
-                    await this.createClient(serverUrl, token, preauthSecret);
+                    await this.createClient(serverUrl, token, preauthSecret, customHeaders);
                 } catch (error) {
                     logError('WebsocketManager init error', error);
                 }
@@ -96,12 +96,12 @@ class WebsocketManagerSingleton {
         this.getConnectedSubject(serverUrl).next('not_connected');
     };
 
-    public createClient = async (serverUrl: string, bearerToken: string, preauthSecret?: string) => {
+    public createClient = async (serverUrl: string, bearerToken: string, preauthSecret?: string, customHeaders?: CustomHeader[]) => {
         if (this.clients[serverUrl]) {
             await this.invalidateClient(serverUrl);
         }
 
-        const client = new WebSocketClient(serverUrl, bearerToken, preauthSecret);
+        const client = new WebSocketClient(serverUrl, bearerToken, preauthSecret, customHeaders);
 
         // Guard: callbacks capture the client instance so stale callbacks from
         // an old client that was replaced (but whose late onClose still fires)

@@ -10,6 +10,7 @@ import {
     setServerCredentials,
     removeServerCredentials,
     removePreauthSecret,
+    removeCustomHeaders,
     clearCachedServerCredentials,
 } from './credentials';
 
@@ -47,6 +48,8 @@ describe('credentials', () => {
     const mockToken = 'test-token-123';
     const mockUserId = 'user-id-123';
     const mockPreauthSecret = 'preauth-secret-123';
+    const mockCustomHeaders = [{name: 'CF-Access-Client-Id', value: 'client-id.access'}, {name: 'CF-Access-Client-Secret', value: 'client-secret-123'}];
+    const mockCustomHeadersService = `custom-headers:${mockServerUrl}`;
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -98,6 +101,29 @@ describe('credentials', () => {
             expect(KeyChain.resetGenericPassword).toHaveBeenCalledWith(
                 expect.objectContaining({
                     server: mockServerUrl,
+                }),
+            );
+        });
+
+        it('should store the custom headers under their own service', async () => {
+            await setServerCredentials(mockServerUrl, mockToken, undefined, mockCustomHeaders);
+
+            expect(KeyChain.setGenericPassword).toHaveBeenCalledWith(
+                'custom_headers',
+                JSON.stringify(mockCustomHeaders),
+                expect.objectContaining({
+                    service: mockCustomHeadersService,
+                    securityLevel: KeyChain.SECURITY_LEVEL.SECURE_SOFTWARE,
+                }),
+            );
+        });
+
+        it('should remove the custom headers when none are given', async () => {
+            await setServerCredentials(mockServerUrl, mockToken);
+
+            expect(KeyChain.resetGenericPassword).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    service: mockCustomHeadersService,
                 }),
             );
         });
@@ -156,11 +182,16 @@ describe('credentials', () => {
                 storage: 'keychain' as any,
             });
 
-            jest.mocked(KeyChain.getGenericPassword).mockResolvedValue({
-                username: 'preshared_secret',
-                password: mockPreauthSecret,
-                service: mockServerUrl,
-                storage: 'keychain' as any,
+            jest.mocked(KeyChain.getGenericPassword).mockImplementation(async (options) => {
+                if (options?.service === mockCustomHeadersService) {
+                    return false;
+                }
+                return {
+                    username: 'preshared_secret',
+                    password: mockPreauthSecret,
+                    service: mockServerUrl,
+                    storage: 'keychain' as any,
+                };
             });
 
             const result = await getServerCredentials(mockServerUrl);
@@ -170,6 +201,36 @@ describe('credentials', () => {
                 userId: mockUserId,
                 token: mockToken,
                 preauthSecret: mockPreauthSecret,
+            });
+        });
+
+        it('should retrieve credentials with custom headers', async () => {
+            jest.mocked(KeyChain.getInternetCredentials).mockResolvedValue({
+                username: mockUserId,
+                password: mockToken,
+                service: mockServerUrl,
+                storage: 'keychain' as any,
+            });
+
+            jest.mocked(KeyChain.getGenericPassword).mockImplementation(async (options) => {
+                if (options?.service === mockCustomHeadersService) {
+                    return {
+                        username: 'custom_headers',
+                        password: JSON.stringify(mockCustomHeaders),
+                        service: mockCustomHeadersService,
+                        storage: 'keychain' as any,
+                    };
+                }
+                return false;
+            });
+
+            const result = await getServerCredentials(mockServerUrl);
+
+            expect(result).toEqual({
+                serverUrl: mockServerUrl,
+                userId: mockUserId,
+                token: mockToken,
+                customHeaders: mockCustomHeaders,
             });
         });
 
@@ -296,6 +357,16 @@ describe('credentials', () => {
         });
     });
 
+    describe('removeCustomHeaders', () => {
+        it('should remove the custom headers', async () => {
+            await removeCustomHeaders(mockServerUrl);
+
+            expect(KeyChain.resetGenericPassword).toHaveBeenCalledWith({
+                service: mockCustomHeadersService,
+            });
+        });
+    });
+
     describe('getAllServerCredentials', () => {
         beforeEach(() => {
             Platform.OS = 'ios';
@@ -368,6 +439,27 @@ describe('credentials', () => {
             expect(result).toHaveLength(1);
             expect(KeyChain.getAllGenericPasswordServices).toHaveBeenCalled();
             expect((KeyChain as any).getAllInternetPasswordServers).not.toHaveBeenCalled();
+        });
+
+        it('should not treat custom headers entries as servers on Android', async () => {
+            Platform.OS = 'android';
+
+            jest.mocked(KeyChain.getAllGenericPasswordServices).mockResolvedValue(['https://server1.com', 'custom-headers:https://server1.com']);
+
+            jest.mocked(KeyChain.getInternetCredentials).mockResolvedValue({
+                username: 'user1',
+                password: 'token1',
+                service: 'https://server1.com',
+                storage: 'keychain' as any,
+            });
+
+            jest.mocked(KeyChain.getGenericPassword).mockResolvedValue(false);
+
+            const result = await getAllServerCredentials();
+
+            expect(result).toHaveLength(1);
+            expect(result[0].serverUrl).toBe('https://server1.com');
+            expect(KeyChain.getInternetCredentials).toHaveBeenCalledTimes(1);
         });
 
         it('should filter out null credentials', async () => {

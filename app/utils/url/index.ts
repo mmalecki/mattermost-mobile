@@ -7,6 +7,8 @@ import urlParse from 'url-parse';
 
 import * as ClientConstants from '@client/rest/constants';
 import {Files} from '@constants';
+import {isCloudflareAccessLoginUrl} from '@utils/cloudflare_access';
+import {getCustomHeadersRecord} from '@utils/custom_headers';
 import {emptyFunction} from '@utils/general';
 import {logDebug} from '@utils/log';
 
@@ -76,11 +78,12 @@ export async function getUrlAfterRedirect(url: string, useHttp = false) {
     }
 }
 
-export async function getServerUrlAfterRedirect(serverUrl: string, useHttp = false, preauthSecret?: string) {
+export async function getServerUrlAfterRedirect(serverUrl: string, useHttp = false, preauthSecret?: string, customHeaders?: CustomHeader[]) {
     let url = sanitizeUrl(serverUrl, useHttp);
 
     const headers = {
         ...(preauthSecret) ? {[ClientConstants.HEADER_X_MATTERMOST_PREAUTH_SECRET]: preauthSecret} : {},
+        ...getCustomHeadersRecord(customHeaders),
     };
 
     try {
@@ -88,7 +91,15 @@ export async function getServerUrlAfterRedirect(serverUrl: string, useHttp = fal
             headers,
         });
         if (resp.redirectUrls?.length) {
-            url = resp.redirectUrls[resp.redirectUrls.length - 1];
+            const redirectUrl = resp.redirectUrls[resp.redirectUrls.length - 1];
+
+            // Being sent to the Cloudflare Access login page means the request was not let through,
+            // so the login page must not be mistaken for the server url
+            if (isCloudflareAccessLoginUrl(redirectUrl)) {
+                logDebug('getServerUrlAfterRedirect: redirected to Cloudflare Access login');
+                return {error: new Error('Cloudflare Access login required'), isCloudflareAccessError: true};
+            }
+            url = redirectUrl;
         }
     } catch (error) {
         logDebug('getServerUrlAfterRedirect error', url, error);
